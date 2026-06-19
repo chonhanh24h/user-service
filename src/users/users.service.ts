@@ -1,6 +1,6 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import * as _ from 'lodash';
 import { User, UserDocument } from '../schemas/user.schema';
@@ -13,7 +13,7 @@ export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Post.name) private postModel: Model<PostDocument>,
-  ) {}
+  ) { }
 
   // ==================== My Ads ====================
 
@@ -43,7 +43,7 @@ export class UsersService {
     return analytic;
   }
 
-  async myAdsDetails(userId: string, query: any) {
+  async myAds(userId: string, query: any) {
     let page = 1;
     const filter: any = { userID: userId as any };
 
@@ -51,7 +51,6 @@ export class UsersService {
       page = parseInt(query.page, 10);
     }
     const skip = (page - 1) * this.limit;
-    const pageNext = page + 1;
 
     if (query.type) {
       filter.status = parseInt(query.type, 10);
@@ -68,6 +67,7 @@ export class UsersService {
         city: 1,
         area: 1,
         createdAt: 1,
+        status: 1,
       })
       .lean()
       .skip(skip)
@@ -75,6 +75,7 @@ export class UsersService {
       .sort({ createdAt: -1 })
       .exec();
 
+    const pageNext = posts.length === this.limit ? page + 1 : null;
     return { data: posts || [], pageNext, userID: userId };
   }
 
@@ -89,7 +90,7 @@ export class UsersService {
     }
 
     const typeNum = parseInt(type, 10);
-    const query: any = { _id: id };
+    const query: any = { _id: id, userID: userId as any };
     const statusConditions: any[] = [];
 
     switch (typeNum) {
@@ -132,37 +133,6 @@ export class UsersService {
         HttpStatus.BAD_REQUEST,
       );
     }
-  }
-
-  async myAdsUpdateTime(body: any) {
-    const { id } = body;
-
-    if (!id) {
-      throw new HttpException(
-        { status: false, msg: 'Không tìm thấy tin đăng phù hợp!' },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    const anHourAgo = Date.now() - 60 * 60 * 1000;
-    const query = { _id: id, createdAt: { $lte: anHourAgo } };
-
-    const bumpPost = await this.postModel.bulkWrite([
-      {
-        updateOne: {
-          filter: query,
-          update: { $set: { createdAt: Date.now() } },
-        },
-      },
-    ]);
-
-    if (!bumpPost.modifiedCount) {
-      return {
-        status: false,
-        msg: 'Đẩy tin thất bại. Bạn chỉ có thể đẩy lại tin mỗi giờ một lần duy nhất!',
-      };
-    }
-    return { status: true, msg: 'Đẩy tin thành công!' };
   }
 
   // ==================== My Profile ====================
@@ -283,7 +253,6 @@ export class UsersService {
       page = parseInt(query.page, 10);
     }
     const skip = (page - 1) * this.limit;
-    let pageNext = page + 1;
 
     const user = await this.userModel.findById(userId).select({ favorite: 1 }).lean().exec();
     if (!user) {
@@ -307,13 +276,7 @@ export class UsersService {
       .limit(this.limit)
       .sort({ createdAt: -1 })
       .exec();
-
-    if (posts.length === this.limit) {
-      pageNext = page + 1;
-    } else {
-      pageNext = 1;
-    }
-
+    const pageNext = posts.length === this.limit ? page + 1 : null;
     return { data: posts || [], pageNext };
   }
 
@@ -445,11 +408,11 @@ export class UsersService {
     // HTML-encode the title to prevent XSS (mirrors the entities.encode from original code)
     const encodedTitle = title
       ? title
-          .replace(/&/g, '&')
-          .replace(/</g, '<')
-          .replace(/>/g, '>')
-          .replace(/"/g, '"')
-          .replace(/'/g, '&#039;')
+        .replace(/&/g, '&')
+        .replace(/</g, '<')
+        .replace(/>/g, '>')
+        .replace(/"/g, '"')
+        .replace(/'/g, '&#039;')
       : '';
 
     const result = await this.userModel.bulkWrite([

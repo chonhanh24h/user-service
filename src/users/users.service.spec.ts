@@ -254,33 +254,6 @@ describe('UsersService', () => {
     });
   });
 
-  describe('myAdsUpdateTime', () => {
-    it('should throw error when id is missing', async () => {
-      await expect(
-        service.myAdsUpdateTime({}),
-      ).rejects.toThrow(HttpException);
-    });
-
-    it('should return failure when no document was modified', async () => {
-      mockPostModel.bulkWrite.mockResolvedValue({ modifiedCount: 0 });
-
-      const result = await service.myAdsUpdateTime({ id: 'post1' });
-
-      expect(result).toEqual({
-        status: false,
-        msg: 'Đẩy tin thất bại. Bạn chỉ có thể đẩy lại tin mỗi giờ một lần duy nhất!',
-      });
-    });
-
-    it('should return success when post was bumped', async () => {
-      mockPostModel.bulkWrite.mockResolvedValue({ modifiedCount: 1 });
-
-      const result = await service.myAdsUpdateTime({ id: 'post1' });
-
-      expect(result).toEqual({ status: true, msg: 'Đẩy tin thành công!' });
-    });
-  });
-
   describe('putMyInfo', () => {
     it('should validate phone number', async () => {
       const result = await service.putMyInfo('userId1', {
