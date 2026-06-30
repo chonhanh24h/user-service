@@ -69,12 +69,6 @@ export class User extends Document {
 
   @Prop()
   forgotExpries: Date;
-
-  @Prop({ default: 0 })
-  money: number;
-
-  @Prop({ default: false })
-  module_DREAM: boolean;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

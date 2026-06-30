@@ -1,10 +1,11 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Inject } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import * as _ from 'lodash';
+import { ClientProxy } from '@nestjs/microservices';
+import { firstValueFrom } from 'rxjs';
 import { User, UserDocument } from '../schemas/user.schema';
-import { Post, PostDocument } from '../schemas/post.schema';
 
 @Injectable()
 export class UsersService {
@@ -12,128 +13,8 @@ export class UsersService {
 
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
-    @InjectModel(Post.name) private postModel: Model<PostDocument>,
+    @Inject('POST_SERVICE') private postServiceClient: ClientProxy,
   ) { }
-
-  // ==================== My Ads ====================
-
-  async myAdsAnalytic(userId: string) {
-    const posts = await this.postModel
-      .find({ userID: userId as any })
-      .select({ status: 1 })
-      .lean()
-      .exec();
-
-    const analytic = {
-      block: 0,
-      post: 0,
-      wait: 0,
-      done: 0,
-      cancel: 0,
-    };
-
-    if (posts && posts.length > 0) {
-      analytic.block = _.sumBy(posts, (o: any) => (o.status == 0 ? 1 : 0));
-      analytic.post = _.sumBy(posts, (o: any) => (o.status == 2 ? 1 : 0));
-      analytic.wait = _.sumBy(posts, (o: any) => (o.status == 1 ? 1 : 0));
-      analytic.done = _.sumBy(posts, (o: any) => (o.status == 3 ? 1 : 0));
-      analytic.cancel = _.sumBy(posts, (o: any) => (o.status == 4 ? 1 : 0));
-    }
-
-    return analytic;
-  }
-
-  async myAds(userId: string, query: any) {
-    let page = 1;
-    const filter: any = { userID: userId as any };
-
-    if (query.page) {
-      page = parseInt(query.page, 10);
-    }
-    const skip = (page - 1) * this.limit;
-
-    if (query.type) {
-      filter.status = parseInt(query.type, 10);
-    }
-
-    const posts = await this.postModel
-      .find(filter)
-      .select({
-        category_alias: 1,
-        title: 1,
-        price: 1,
-        image: 1,
-        has_thumb: 1,
-        city: 1,
-        area: 1,
-        createdAt: 1,
-        status: 1,
-      })
-      .lean()
-      .skip(skip)
-      .limit(this.limit)
-      .sort({ createdAt: -1 })
-      .exec();
-
-    const pageNext = posts.length === this.limit ? page + 1 : null;
-    return { data: posts || [], pageNext, userID: userId };
-  }
-
-  async myAdsUpdateStatus(userId: string, body: any) {
-    const { id, type } = body;
-
-    if (!id || !type) {
-      throw new HttpException(
-        { status: false, msg: 'Không tìm thấy tin đăng phù hợp!' },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    const typeNum = parseInt(type, 10);
-    const query: any = { _id: id, userID: userId as any };
-    const statusConditions: any[] = [];
-
-    switch (typeNum) {
-      case 1:
-        statusConditions.push({ status: 4 });
-        break;
-      case 3:
-        statusConditions.push({ status: 2 });
-        break;
-      case 4:
-        statusConditions.push({ status: 1 }, { status: 2 });
-        break;
-      case 6:
-        statusConditions.push(
-          { status: 3 },
-          { status: 4 },
-          { status: 5 },
-        );
-        break;
-    }
-
-    query.$or = statusConditions;
-
-    const post = await this.postModel.findOne(query).select({ status: 1 }).exec();
-
-    if (post) {
-      post.status = typeNum;
-      try {
-        await post.save();
-        return { status: true, old_status: post.status };
-      } catch (err) {
-        throw new HttpException(
-          { status: false, msg: 'Cập nhật trạng thái thất bại!' },
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
-      }
-    } else {
-      throw new HttpException(
-        { status: false, msg: 'Không tìm thấy tin đăng phù hợp!' },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
 
   // ==================== My Profile ====================
 
@@ -259,23 +140,10 @@ export class UsersService {
       return { data: [], pageNext: 1 };
     }
 
-    const posts = await this.postModel
-      .find({ _id: { $in: user.favorite } })
-      .select({
-        category_alias: 1,
-        title: 1,
-        price: 1,
-        image: 1,
-        has_thumb: 1,
-        area: 1,
-        city: 1,
-        createdAt: 1,
-      })
-      .lean()
-      .skip(skip)
-      .limit(this.limit)
-      .sort({ createdAt: -1 })
-      .exec();
+    const posts = await firstValueFrom(
+      this.postServiceClient.send({ cmd: 'get_posts_by_ids' }, { ids: user.favorite, skip, limit: this.limit })
+    ).catch(() => []);
+
     const pageNext = posts.length === this.limit ? page + 1 : null;
     return { data: posts || [], pageNext };
   }
@@ -287,7 +155,9 @@ export class UsersService {
       return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
     }
 
-    const count = await this.postModel.countDocuments({ _id: id }).exec();
+    const count = await firstValueFrom(
+      this.postServiceClient.send({ cmd: 'check_post_exists' }, id)
+    ).catch(() => 0);
     if (!count) {
       return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
     }
@@ -322,7 +192,9 @@ export class UsersService {
       return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
     }
 
-    const count = await this.postModel.countDocuments({ _id: id }).exec();
+    const count = await firstValueFrom(
+      this.postServiceClient.send({ cmd: 'check_post_exists' }, id)
+    ).catch(() => 0);
     if (!count) {
       return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
     }

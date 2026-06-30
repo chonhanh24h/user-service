@@ -6,23 +6,6 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }
 
-  // ==================== My Ads ====================
-
-  @MessagePattern({ cmd: 'my_ads_analytic' })
-  async myAdsAnalytic(data: { userId: string }) {
-    return this.usersService.myAdsAnalytic(data.userId);
-  }
-
-  @MessagePattern({ cmd: 'my_ads' })
-  async myAds(data: { userId: string; query: any }) {
-    return this.usersService.myAds(data.userId, data.query);
-  }
-
-  @MessagePattern({ cmd: 'my_ads_update_status' })
-  async myAdsUpdateStatus(data: { userId: string; body: any }) {
-    return this.usersService.myAdsUpdateStatus(data.userId, data.body);
-  }
-
   // ==================== My Profile ====================
 
   @MessagePattern({ cmd: 'put_my_info' })
