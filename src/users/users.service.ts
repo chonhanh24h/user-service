@@ -16,8 +16,6 @@ export class UsersService {
     @Inject('POST_SERVICE') private postServiceClient: ClientProxy,
   ) { }
 
-  // ==================== My Profile ====================
-
   async putMyInfo(userId: string, body: any) {
     const userUpdate: any = {};
     const query = { _id: userId };
@@ -125,8 +123,6 @@ export class UsersService {
 
     return { status: false, msg: 'Không có dữ liệu để cập nhật!' };
   }
-
-  // ==================== Favorite ====================
 
   async getFavorite(userId: string, query: any) {
     let page = 1;
@@ -241,8 +237,6 @@ export class UsersService {
       return { status: false, msg: 'Thực hiện thất bại. Vui lòng thử lại!' };
     }
   }
-
-  // ==================== Search ====================
 
   async getSearch(userId: string, query: any) {
     let page = 1;
