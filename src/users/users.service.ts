@@ -43,7 +43,7 @@ export class UsersService {
           };
         }
         // Remove special chars
-        userUpdate.name = body.yourname.replace(/[\[\]!@#$%^&*()?:;<>{}]/g, '');
+        userUpdate.name = body.yourname.replace(/[\][!@#$%^&*()?:;<>{}]/g, '');
       }
 
       if (!_.isEmpty(userUpdate)) {
@@ -88,7 +88,11 @@ export class UsersService {
 
       const user = await this.userModel.findOne({ _id: userId }).exec();
       if (!user) {
-        return { status: false, type: 1, oldpassword: 'Tài khoản không hợp lệ!' };
+        return {
+          status: false,
+          type: 1,
+          oldpassword: 'Tài khoản không hợp lệ!',
+        };
       }
 
       const isMatch = bcrypt.compareSync(body.oldpassword, user.password);
@@ -131,13 +135,20 @@ export class UsersService {
     }
     const skip = (page - 1) * this.limit;
 
-    const user = await this.userModel.findById(userId).select({ favorite: 1 }).lean().exec();
+    const user = await this.userModel
+      .findById(userId)
+      .select({ favorite: 1 })
+      .lean()
+      .exec();
     if (!user) {
       return { data: [], pageNext: 1 };
     }
 
     const posts = await firstValueFrom(
-      this.postServiceClient.send({ cmd: 'get_posts_by_ids' }, { ids: user.favorite, skip, limit: this.limit })
+      this.postServiceClient.send(
+        { cmd: 'get_posts_by_ids' },
+        { ids: user.favorite, skip, limit: this.limit },
+      ),
     ).catch(() => []);
 
     const pageNext = posts.length === this.limit ? page + 1 : null;
@@ -152,7 +163,7 @@ export class UsersService {
     }
 
     const count = await firstValueFrom(
-      this.postServiceClient.send({ cmd: 'check_post_exists' }, id)
+      this.postServiceClient.send({ cmd: 'check_post_exists' }, id),
     ).catch(() => 0);
     if (!count) {
       return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
@@ -189,7 +200,7 @@ export class UsersService {
     }
 
     const count = await firstValueFrom(
-      this.postServiceClient.send({ cmd: 'check_post_exists' }, id)
+      this.postServiceClient.send({ cmd: 'check_post_exists' }, id),
     ).catch(() => 0);
     if (!count) {
       return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
@@ -246,14 +257,16 @@ export class UsersService {
     const skip = (page - 1) * this.limit;
     const pageNext = page + 1;
 
-    const results = await this.userModel.aggregate([
-      { $match: { _id: userId } },
-      { $project: { search: 1 } },
-      { $unwind: '$search' },
-      { $skip: skip },
-      { $limit: this.limit },
-      { $project: { _id: 0, search: 1 } },
-    ]).exec();
+    const results = await this.userModel
+      .aggregate([
+        { $match: { _id: userId } },
+        { $project: { search: 1 } },
+        { $unwind: '$search' },
+        { $skip: skip },
+        { $limit: this.limit },
+        { $project: { _id: 0, search: 1 } },
+      ])
+      .exec();
 
     if (results && results.length > 0) {
       const mysearch = results.map((o) => o.search);

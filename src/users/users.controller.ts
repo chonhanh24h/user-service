@@ -6,14 +6,10 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }
 
-  // ==================== My Profile ====================
-
   @MessagePattern({ cmd: 'put_my_info' })
   async putMyInfo(data: { userId: string; body: any }) {
     return this.usersService.putMyInfo(data.userId, data.body);
   }
-
-  // ==================== Favorite ====================
 
   @MessagePattern({ cmd: 'get_favorite' })
   async getFavorite(data: { userId: string; query: any }) {
@@ -34,8 +30,6 @@ export class UsersController {
   async unSaveAllFavorite(data: { userId: string }) {
     return this.usersService.unSaveAllFavorite(data.userId);
   }
-
-  // ==================== Search ====================
 
   @MessagePattern({ cmd: 'get_search' })
   async getSearch(data: { userId: string; query: any }) {

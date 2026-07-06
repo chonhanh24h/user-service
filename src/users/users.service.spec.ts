@@ -2,14 +2,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { UsersService } from './users.service';
 import { User } from '../schemas/user.schema';
-import { Post } from '../schemas/post.schema';
+import { of } from 'rxjs';
 import { HttpException, HttpStatus } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 
 describe('UsersService', () => {
   let service: UsersService;
   let mockUserModel: any;
-  let mockPostModel: any;
+  let mockPostServiceClient: any;
 
   beforeEach(async () => {
     // Mock user model
@@ -17,9 +17,7 @@ describe('UsersService', () => {
       _id: 'userId1',
       favorite: ['postId1', 'postId2'],
       password: '$2a$10$hashedpassword',
-      search: [
-        { _id: 'search1', title: 'Search 1', url: '/search?q=1' },
-      ],
+      search: [{ _id: 'search1', title: 'Search 1', url: '/search?q=1' }],
       save: jest.fn().mockResolvedValue(true),
     };
 
@@ -33,13 +31,8 @@ describe('UsersService', () => {
       findByIdAndUpdate: jest.fn(),
     };
 
-    // Create a mock countDocuments that returns a chainable object with exec()
-    const mockCountDocuments = jest.fn();
-    mockPostModel = {
-      find: jest.fn(),
-      findOne: jest.fn(),
-      countDocuments: mockCountDocuments,
-      bulkWrite: jest.fn(),
+    mockPostServiceClient = {
+      send: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -50,8 +43,8 @@ describe('UsersService', () => {
           useValue: mockUserModel,
         },
         {
-          provide: getModelToken(Post.name),
-          useValue: mockPostModel,
+          provide: 'POST_SERVICE',
+          useValue: mockPostServiceClient,
         },
       ],
     }).compile();
@@ -61,197 +54,6 @@ describe('UsersService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
-  });
-
-  describe('myAdsAnalytic', () => {
-    it('should return zero analytics when no posts found', async () => {
-      mockPostModel.find.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          lean: jest.fn().mockReturnValue({
-            exec: jest.fn().mockResolvedValue([]),
-          }),
-        }),
-      });
-
-      const result = await service.myAdsAnalytic('userId1');
-
-      expect(result).toEqual({
-        block: 0, post: 0, wait: 0, done: 0, cancel: 0,
-      });
-      expect(mockPostModel.find).toHaveBeenCalledWith({ userID: 'userId1' });
-    });
-
-    it('should count posts by status correctly', async () => {
-      const mockPosts = [
-        { status: 0 }, { status: 0 }, // block
-        { status: 2 }, { status: 2 }, { status: 2 }, // post
-        { status: 1 }, // wait
-        { status: 3 }, { status: 3 }, // done
-        { status: 4 }, // cancel
-      ];
-
-      mockPostModel.find.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          lean: jest.fn().mockReturnValue({
-            exec: jest.fn().mockResolvedValue(mockPosts),
-          }),
-        }),
-      });
-
-      const result = await service.myAdsAnalytic('userId1');
-
-      expect(result).toEqual({
-        block: 2, post: 3, wait: 1, done: 2, cancel: 1,
-      });
-    });
-  });
-
-  describe('myAdsDetails', () => {
-    it('should return paginated posts with default page', async () => {
-      const mockPosts = [{ title: 'Post 1' }, { title: 'Post 2' }];
-      mockPostModel.find.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          lean: jest.fn().mockReturnValue({
-            skip: jest.fn().mockReturnValue({
-              limit: jest.fn().mockReturnValue({
-                sort: jest.fn().mockReturnValue({
-                  exec: jest.fn().mockResolvedValue(mockPosts),
-                }),
-              }),
-            }),
-          }),
-        }),
-      });
-
-      const result = await service.myAdsDetails('userId1', {});
-
-      expect(result).toEqual({
-        data: mockPosts,
-        pageNext: 2,
-        userID: 'userId1',
-      });
-    });
-
-    it('should filter by type when query.type is provided', async () => {
-      const mockPosts = [{ title: 'Post 1', status: 2 }];
-      mockPostModel.find.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          lean: jest.fn().mockReturnValue({
-            skip: jest.fn().mockReturnValue({
-              limit: jest.fn().mockReturnValue({
-                sort: jest.fn().mockReturnValue({
-                  exec: jest.fn().mockResolvedValue(mockPosts),
-                }),
-              }),
-            }),
-          }),
-        }),
-      });
-
-      const result = await service.myAdsDetails('userId1', { type: '2', page: '2' });
-
-      expect(result).toEqual({
-        data: mockPosts,
-        pageNext: 3,
-        userID: 'userId1',
-      });
-    });
-
-    it('should return empty array when posts is null', async () => {
-      mockPostModel.find.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          lean: jest.fn().mockReturnValue({
-            skip: jest.fn().mockReturnValue({
-              limit: jest.fn().mockReturnValue({
-                sort: jest.fn().mockReturnValue({
-                  exec: jest.fn().mockResolvedValue(null),
-                }),
-              }),
-            }),
-          }),
-        }),
-      });
-
-      const result = await service.myAdsDetails('userId1', {});
-
-      expect(result).toEqual({
-        data: [],
-        pageNext: 2,
-        userID: 'userId1',
-      });
-    });
-  });
-
-  describe('myAdsUpdateStatus', () => {
-    it('should throw error when id or type is missing', async () => {
-      await expect(
-        service.myAdsUpdateStatus('userId1', {}),
-      ).rejects.toThrow(HttpException);
-
-      await expect(
-        service.myAdsUpdateStatus('userId1', { id: 'post1' }),
-      ).rejects.toThrow(HttpException);
-    });
-
-    it('should throw error when post not found', async () => {
-      mockPostModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          exec: jest.fn().mockResolvedValue(null),
-        }),
-      });
-
-      await expect(
-        service.myAdsUpdateStatus('userId1', { id: 'post1', type: '3' }),
-      ).rejects.toThrow(
-        new HttpException(
-          { status: false, msg: 'Không tìm thấy tin đăng phù hợp!' },
-          HttpStatus.BAD_REQUEST,
-        ),
-      );
-    });
-
-    it('should update post status and return old_status', async () => {
-      const mockPost = {
-        _id: 'post1',
-        status: 2,
-        save: jest.fn().mockResolvedValue(true),
-      };
-
-      mockPostModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          exec: jest.fn().mockResolvedValue(mockPost),
-        }),
-      });
-
-      const result = await service.myAdsUpdateStatus('userId1', { id: 'post1', type: '3' });
-
-      expect(result).toEqual({ status: true, old_status: 3 });
-      expect(mockPost.status).toBe(3);
-      expect(mockPost.save).toHaveBeenCalled();
-    });
-
-    it('should throw error when save fails', async () => {
-      const mockPost = {
-        _id: 'post1',
-        status: 2,
-        save: jest.fn().mockRejectedValue(new Error('DB error')),
-      };
-
-      mockPostModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          exec: jest.fn().mockResolvedValue(mockPost),
-        }),
-      });
-
-      await expect(
-        service.myAdsUpdateStatus('userId1', { id: 'post1', type: '3' }),
-      ).rejects.toThrow(
-        new HttpException(
-          { status: false, msg: 'Cập nhật trạng thái thất bại!' },
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        ),
-      );
-    });
   });
 
   describe('putMyInfo', () => {
@@ -379,7 +181,9 @@ describe('UsersService', () => {
     it('should return favorited posts with pagination', async () => {
       const mockUser = { favorite: ['postId1', 'postId2'] };
       // Create 10 posts to match the service limit for pageNext=2
-      const mockPosts = Array.from({ length: 10 }, (_, i) => ({ title: `Post ${i + 1}` }));
+      const mockPosts = Array.from({ length: 10 }, (_, i) => ({
+        title: `Post ${i + 1}`,
+      }));
 
       mockUserModel.findById.mockReturnValue({
         select: jest.fn().mockReturnValue({
@@ -388,26 +192,14 @@ describe('UsersService', () => {
           }),
         }),
       });
-      mockPostModel.find.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          lean: jest.fn().mockReturnValue({
-            skip: jest.fn().mockReturnValue({
-              limit: jest.fn().mockReturnValue({
-                sort: jest.fn().mockReturnValue({
-                  exec: jest.fn().mockResolvedValue(mockPosts),
-                }),
-              }),
-            }),
-          }),
-        }),
-      });
+      mockPostServiceClient.send.mockReturnValue(of(mockPosts));
 
       const result = await service.getFavorite('userId1', { page: '1' });
 
       expect(result).toEqual({ data: mockPosts, pageNext: 2 });
     });
 
-    it('should set pageNext to 1 when less results than limit', async () => {
+    it('should set pageNext to null when less results than limit', async () => {
       const mockUser = { favorite: ['postId1'] };
       const mockPosts = [{ title: 'Post 1' }];
 
@@ -418,23 +210,11 @@ describe('UsersService', () => {
           }),
         }),
       });
-      mockPostModel.find.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          lean: jest.fn().mockReturnValue({
-            skip: jest.fn().mockReturnValue({
-              limit: jest.fn().mockReturnValue({
-                sort: jest.fn().mockReturnValue({
-                  exec: jest.fn().mockResolvedValue(mockPosts),
-                }),
-              }),
-            }),
-          }),
-        }),
-      });
+      mockPostServiceClient.send.mockReturnValue(of(mockPosts));
 
       const result = await service.getFavorite('userId1', {});
 
-      expect(result).toEqual({ data: mockPosts, pageNext: 1 });
+      expect(result).toEqual({ data: mockPosts, pageNext: null });
     });
   });
 
@@ -449,9 +229,7 @@ describe('UsersService', () => {
     });
 
     it('should return error when post not found', async () => {
-      mockPostModel.countDocuments.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(0),
-      });
+      mockPostServiceClient.send.mockReturnValue(of(0));
 
       const result = await service.saveFavorite('userId1', { id: 'post1' });
 
@@ -462,9 +240,7 @@ describe('UsersService', () => {
     });
 
     it('should add favorite when post exists and not already favorited', async () => {
-      mockPostModel.countDocuments.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(1),
-      });
+      mockPostServiceClient.send.mockReturnValue(of(1));
       const mockUser = {
         _id: 'userId1',
         favorite: ['otherPostId'],
@@ -488,9 +264,7 @@ describe('UsersService', () => {
     });
 
     it('should return error when post already in favorites', async () => {
-      mockPostModel.countDocuments.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(1),
-      });
+      mockPostServiceClient.send.mockReturnValue(of(1));
       const mockUser = {
         _id: 'userId1',
         favorite: ['post1'],
@@ -520,9 +294,7 @@ describe('UsersService', () => {
     });
 
     it('should remove favorite when exists', async () => {
-      mockPostModel.countDocuments.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(1),
-      });
+      mockPostServiceClient.send.mockReturnValue(of(1));
       const mockUser = {
         _id: 'userId1',
         favorite: ['post1', 'post2'],
