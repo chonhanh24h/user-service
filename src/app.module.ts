@@ -10,12 +10,14 @@ import { UsersModule } from './users/users.module';
     }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        uri: configService.get<string>('MONGODB_URI') || 'mongodb://localhost:27017/chonhanh24h',
+      useFactory: (configService: ConfigService) => ({
+        uri:
+          configService.get<string>('MONGODB_URI') ||
+          'mongodb://localhost:27017/chonhanh24h',
       }),
       inject: [ConfigService],
     }),
     UsersModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }

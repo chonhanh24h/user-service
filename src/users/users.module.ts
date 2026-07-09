@@ -8,9 +8,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([
-      { name: User.name, schema: UserSchema },
-    ]),
+    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     ClientsModule.registerAsync([
       {
         name: 'POST_SERVICE',
@@ -19,7 +17,9 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
           transport: Transport.TCP,
           options: {
             host: configService.get('POST_SERVICE_HOST') || '127.0.0.1',
-            port: parseInt(configService.get('POST_SERVICE_PORT') as string, 10) || 3004,
+            port:
+              parseInt(configService.get('POST_SERVICE_PORT') as string, 10) ||
+              3004,
           },
         }),
         inject: [ConfigService],
@@ -29,4 +29,4 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
   controllers: [UsersController],
   providers: [UsersService],
 })
-export class UsersModule {}
+export class UsersModule { }
