@@ -14,7 +14,7 @@ export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @Inject('POST_SERVICE') private postServiceClient: ClientProxy,
-  ) { }
+  ) {}
 
   async putMyInfo(userId: string, body: any) {
     const userUpdate: any = {};
@@ -287,11 +287,11 @@ export class UsersService {
     // HTML-encode the title to prevent XSS (mirrors the entities.encode from original code)
     const encodedTitle = title
       ? title
-        .replace(/&/g, '&')
-        .replace(/</g, '<')
-        .replace(/>/g, '>')
-        .replace(/"/g, '"')
-        .replace(/'/g, '&#039;')
+          .replace(/&/g, '&')
+          .replace(/</g, '<')
+          .replace(/>/g, '>')
+          .replace(/"/g, '"')
+          .replace(/'/g, '&#039;')
       : '';
 
     const result = await this.userModel.bulkWrite([

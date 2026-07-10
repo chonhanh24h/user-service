@@ -4,7 +4,7 @@ import { UsersService } from './users.service';
 
 @Controller()
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(private readonly usersService: UsersService) {}
 
   @MessagePattern({ cmd: 'put_my_info' })
   async putMyInfo(data: { userId: string; body: any }) {
