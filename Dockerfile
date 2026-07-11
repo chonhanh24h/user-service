@@ -12,15 +12,12 @@ COPY . .
 
 RUN npm run build
 
-RUN npm prune --omit=dev
-
-
 # ==========================
-# Production
+# Realse
 # ==========================
 FROM node:22-alpine
 
-ENV NODE_ENV=production
+ENV NODE_ENV=dev
 
 WORKDIR /app
 
@@ -28,8 +25,4 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/dist ./dist
 
-USER node
-
-EXPOSE 3000
-
-CMD ["node", "dist/main.js"]
+CMD npm run start:dev
