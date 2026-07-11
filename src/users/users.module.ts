@@ -19,7 +19,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
             host: configService.get('POST_SERVICE_HOST') || '127.0.0.1',
             port:
               parseInt(configService.get('POST_SERVICE_PORT') as string, 10) ||
-              3004,
+              3003,
           },
         }),
         inject: [ConfigService],
