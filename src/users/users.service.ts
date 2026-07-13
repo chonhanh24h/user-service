@@ -354,4 +354,12 @@ export class UsersService {
       return { status: false, msg: 'Thực hiện thất bại. Vui lòng thử lại!' };
     }
   }
+
+  async findById(id: string): Promise<User | null> {
+    return this.userModel
+      .findById(id)
+      .select({ name: 1, email: 1, phone: 1 })
+      .lean()
+      .exec();
+  }
 }

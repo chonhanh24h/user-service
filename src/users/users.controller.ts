@@ -50,4 +50,9 @@ export class UsersController {
   async unSaveAllSearch(data: { userId: string }) {
     return this.usersService.unSaveAllSearch(data.userId);
   }
+
+  @MessagePattern({ cmd: 'get_profile' })
+  async getProfile(data: { userId?: string }) {
+    return this.usersService.findById(data.userId || '');
+  }
 }
