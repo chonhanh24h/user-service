@@ -13,7 +13,7 @@ import { UsersModule } from './users/users.module';
       useFactory: (configService: ConfigService) => ({
         uri:
           configService.get<string>('MONGODB_URI') ||
-          'mongodb://localhost:27017/chonhanh24h',
+          'mongodb://localhost:27017/user-service',
       }),
       inject: [ConfigService],
     }),
