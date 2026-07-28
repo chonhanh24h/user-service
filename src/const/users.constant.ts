@@ -1,0 +1,11 @@
+export const PAGINATION_LIMIT = 10;
+export const PHONE_REGEX = /^\d{9,11}$/;
+export const NAME_MIN_LENGTH = 3;
+export const NAME_MAX_LENGTH = 20;
+export const PASSWORD_MIN_LENGTH = 6;
+export const PASSWORD_MAX_LENGTH = 20;
+export const BCRYPT_SALT_ROUNDS = 10;
+export const SPECIAL_CHARS_REGEX = /[\][!@#$%^&*()?:;<>{}]/g;
+export const POST_SERVICE_NAME = 'POST_SERVICE';
+export const CMD_GET_POSTS_BY_IDS = 'get_posts_by_ids';
+export const CMD_CHECK_POST_EXISTS = 'check_post_exists';

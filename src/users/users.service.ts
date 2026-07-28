@@ -1,19 +1,33 @@
-import { Injectable, HttpException, HttpStatus, Inject } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import * as _ from 'lodash';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { User, UserDocument } from '../schemas/user.schema';
+import { UserMessage } from '../const/users.enum';
+import {
+  PAGINATION_LIMIT,
+  PHONE_REGEX,
+  NAME_MIN_LENGTH,
+  NAME_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_MAX_LENGTH,
+  BCRYPT_SALT_ROUNDS,
+  SPECIAL_CHARS_REGEX,
+  POST_SERVICE_NAME,
+  CMD_GET_POSTS_BY_IDS,
+  CMD_CHECK_POST_EXISTS,
+} from '../const/users.constant';
 
 @Injectable()
 export class UsersService {
-  private readonly limit = 10;
+  private readonly limit = PAGINATION_LIMIT;
 
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
-    @Inject('POST_SERVICE') private postServiceClient: ClientProxy,
+    @Inject(POST_SERVICE_NAME) private postServiceClient: ClientProxy,
   ) {}
 
   async putMyInfo(userId: string, body: any) {
@@ -23,11 +37,11 @@ export class UsersService {
     if (body.phone || body.yourname) {
       if (body.phone && body.phone !== '') {
         // Validate phone
-        if (!/^\d{9,11}$/.test(body.phone)) {
+        if (!PHONE_REGEX.test(body.phone)) {
           return {
             status: false,
             type: 1,
-            phone: 'Số điện thoại không hợp lệ',
+            phone: UserMessage.INVALID_PHONE,
           };
         }
         userUpdate.phone = body.phone;
@@ -35,15 +49,18 @@ export class UsersService {
 
       if (body.yourname && body.yourname !== '') {
         // Validate name
-        if (body.yourname.length < 3 || body.yourname.length > 20) {
+        if (
+          body.yourname.length < NAME_MIN_LENGTH ||
+          body.yourname.length > NAME_MAX_LENGTH
+        ) {
           return {
             status: false,
             type: 1,
-            yourname: 'Tên của bạn gồm 3-20 ký tự',
+            yourname: UserMessage.INVALID_NAME_LENGTH,
           };
         }
         // Remove special chars
-        userUpdate.name = body.yourname.replace(/[\][!@#$%^&*()?:;<>{}]/g, '');
+        userUpdate.name = body.yourname.replace(SPECIAL_CHARS_REGEX, '');
       }
 
       if (!_.isEmpty(userUpdate)) {
@@ -57,32 +74,38 @@ export class UsersService {
         ]);
 
         if (result.modifiedCount) {
-          return { status: true, msg: 'Cập nhật thông tin thành công!' };
+          return { status: true, msg: UserMessage.UPDATE_INFO_SUCCESS };
         } else {
-          return { status: false, msg: 'Cập nhật thông tin thất bại!' };
+          return { status: false, msg: UserMessage.UPDATE_INFO_FAILED };
         }
       }
     } else if (body.oldpassword && body.newpassword && body.repassword) {
       // Validate password
-      if (body.oldpassword.length < 6 || body.oldpassword.length > 20) {
+      if (
+        body.oldpassword.length < PASSWORD_MIN_LENGTH ||
+        body.oldpassword.length > PASSWORD_MAX_LENGTH
+      ) {
         return {
           status: false,
           type: 1,
-          oldpassword: 'Mật khẩu gồm 6-20 ký tự',
+          oldpassword: UserMessage.INVALID_PASSWORD_LENGTH,
         };
       }
-      if (body.newpassword.length < 6 || body.newpassword.length > 20) {
+      if (
+        body.newpassword.length < PASSWORD_MIN_LENGTH ||
+        body.newpassword.length > PASSWORD_MAX_LENGTH
+      ) {
         return {
           status: false,
           type: 1,
-          newpassword: 'Mật khẩu gồm 6-20 ký tự',
+          newpassword: UserMessage.INVALID_PASSWORD_LENGTH,
         };
       }
       if (body.newpassword !== body.repassword) {
         return {
           status: false,
           type: 1,
-          repassword: 'Nhập lại mật khẩu không chính xác',
+          repassword: UserMessage.PASSWORD_MISMATCH,
         };
       }
 
@@ -91,7 +114,7 @@ export class UsersService {
         return {
           status: false,
           type: 1,
-          oldpassword: 'Tài khoản không hợp lệ!',
+          oldpassword: UserMessage.INVALID_ACCOUNT,
         };
       }
 
@@ -100,11 +123,14 @@ export class UsersService {
         return {
           status: false,
           type: 1,
-          oldpassword: 'Mật khẩu hiện tại không chính xác!',
+          oldpassword: UserMessage.CURRENT_PASSWORD_INCORRECT,
         };
       }
 
-      const hash = bcrypt.hashSync(body.newpassword, bcrypt.genSaltSync(10));
+      const hash = bcrypt.hashSync(
+        body.newpassword,
+        bcrypt.genSaltSync(BCRYPT_SALT_ROUNDS),
+      );
       userUpdate.password = hash;
 
       if (!_.isEmpty(userUpdate)) {
@@ -118,14 +144,14 @@ export class UsersService {
         ]);
 
         if (result.modifiedCount) {
-          return { status: true, msg: 'Cập nhật mật khẩu thành công!' };
+          return { status: true, msg: UserMessage.UPDATE_PASSWORD_SUCCESS };
         } else {
-          return { status: false, msg: 'Cập nhật mật khẩu thất bại!' };
+          return { status: false, msg: UserMessage.UPDATE_PASSWORD_FAILED };
         }
       }
     }
 
-    return { status: false, msg: 'Không có dữ liệu để cập nhật!' };
+    return { status: false, msg: UserMessage.NO_DATA_TO_UPDATE };
   }
 
   async getFavorite(userId: string, query: any) {
@@ -146,7 +172,7 @@ export class UsersService {
 
     const posts = await firstValueFrom(
       this.postServiceClient.send(
-        { cmd: 'get_posts_by_ids' },
+        { cmd: CMD_GET_POSTS_BY_IDS },
         { ids: user.favorite, skip, limit: this.limit },
       ),
     ).catch(() => []);
@@ -159,19 +185,19 @@ export class UsersService {
     const { id } = body;
 
     if (!id) {
-      return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
+      return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
     const count = await firstValueFrom(
-      this.postServiceClient.send({ cmd: 'check_post_exists' }, id),
+      this.postServiceClient.send({ cmd: CMD_CHECK_POST_EXISTS }, id),
     ).catch(() => 0);
     if (!count) {
-      return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
+      return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
     const user = await this.userModel.findById(userId).exec();
     if (!user) {
-      return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
+      return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
     if (user.favorite.indexOf(id.toString()) < 0) {
@@ -180,14 +206,14 @@ export class UsersService {
           { _id: userId },
           { $push: { favorite: id } },
         );
-        return { status: true, msg: 'Đã LƯU vào danh sách yêu thích!' };
+        return { status: true, msg: UserMessage.SAVE_FAVORITE_SUCCESS };
       } catch (err) {
-        return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
+        return { status: false, msg: UserMessage.POST_NOT_FOUND };
       }
     } else {
       return {
         status: false,
-        msg: 'Tin đăng ĐÃ TỒN TẠI trong danh sách yêu thích của bạn!',
+        msg: UserMessage.FAVORITE_ALREADY_EXISTS,
       };
     }
   }
@@ -196,19 +222,19 @@ export class UsersService {
     const { id } = body;
 
     if (!id) {
-      return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
+      return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
     const count = await firstValueFrom(
-      this.postServiceClient.send({ cmd: 'check_post_exists' }, id),
+      this.postServiceClient.send({ cmd: CMD_CHECK_POST_EXISTS }, id),
     ).catch(() => 0);
     if (!count) {
-      return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
+      return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
     const user = await this.userModel.findById(userId).exec();
     if (!user) {
-      return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
+      return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
     if (user.favorite.indexOf(id.toString()) >= 0) {
@@ -220,14 +246,14 @@ export class UsersService {
           { _id: userId },
           { favorite: newFavorite },
         );
-        return { status: true, msg: 'Đã XÓA khỏi danh sách yêu thích!' };
+        return { status: true, msg: UserMessage.UNSAVE_FAVORITE_SUCCESS };
       } catch (err) {
-        return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
+        return { status: false, msg: UserMessage.POST_NOT_FOUND };
       }
     } else {
       return {
         status: false,
-        msg: 'Tin đăng KHÔNG tồn tại trong danh sách yêu thích của bạn!',
+        msg: UserMessage.FAVORITE_NOT_FOUND,
       };
     }
   }
@@ -245,7 +271,7 @@ export class UsersService {
     if (result.modifiedCount) {
       return { status: true };
     } else {
-      return { status: false, msg: 'Thực hiện thất bại. Vui lòng thử lại!' };
+      return { status: false, msg: UserMessage.OPERATION_FAILED };
     }
   }
 
@@ -280,7 +306,7 @@ export class UsersService {
     const { url, title } = body;
 
     if (!url) {
-      return { status: false, msg: 'Không TÌM THẤY tin đăng phù hợp!' };
+      return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
     const cleanedUrl = url.replace(/page=[0-9]*$/g, 'page=1');
@@ -306,11 +332,11 @@ export class UsersService {
     ]);
 
     if (result.modifiedCount) {
-      return { status: true, msg: 'Thành công! Bạn đã lưu tìm kiếm này.' };
+      return { status: true, msg: UserMessage.SAVE_SEARCH_SUCCESS };
     } else {
       return {
         status: false,
-        msg: 'Lưu tìm kiếm thất bại. Vui lòng thử lại!',
+        msg: UserMessage.SAVE_SEARCH_FAILED,
       };
     }
   }
@@ -319,7 +345,7 @@ export class UsersService {
     const { id } = body;
 
     if (!id) {
-      return { status: false, msg: 'Thực hiện thất bại. Vui lòng thử lại!' };
+      return { status: false, msg: UserMessage.OPERATION_FAILED };
     }
 
     const result = await this.userModel.bulkWrite([
@@ -332,9 +358,9 @@ export class UsersService {
     ]);
 
     if (result.modifiedCount) {
-      return { status: true, msg: 'Thành công! Tìm kiếm đã được hủy.' };
+      return { status: true, msg: UserMessage.UNSAVE_SEARCH_SUCCESS };
     } else {
-      return { status: false, msg: 'Thực hiện thất bại. Vui lòng thử lại!' };
+      return { status: false, msg: UserMessage.OPERATION_FAILED };
     }
   }
 
@@ -351,7 +377,7 @@ export class UsersService {
     if (result.modifiedCount) {
       return { status: true };
     } else {
-      return { status: false, msg: 'Thực hiện thất bại. Vui lòng thử lại!' };
+      return { status: false, msg: UserMessage.OPERATION_FAILED };
     }
   }
 }
