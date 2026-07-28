@@ -14,13 +14,13 @@ export class User extends Document {
   @Prop({ type: [Object], default: [] })
   roleDetail: any[];
 
-  @Prop()
+  @Prop({ unique: true, sparse: true })
   email: string;
 
   @Prop()
   password?: string;
 
-  @Prop()
+  @Prop({ unique: true, sparse: true })
   phone: string;
 
   @Prop()
