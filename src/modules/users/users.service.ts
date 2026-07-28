@@ -5,8 +5,8 @@ import * as bcrypt from 'bcryptjs';
 import * as _ from 'lodash';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
-import { User, UserDocument } from '../schemas/user.schema';
-import { UserMessage } from '../const/users.enum';
+import { User, UserDocument } from './user.schema';
+import { UserMessage } from './users.enums';
 import {
   PAGINATION_LIMIT,
   PHONE_REGEX,
@@ -19,7 +19,7 @@ import {
   POST_SERVICE_NAME,
   CMD_GET_POSTS_BY_IDS,
   CMD_CHECK_POST_EXISTS,
-} from '../const/users.constant';
+} from './users.consts';
 
 @Injectable()
 export class UsersService {
