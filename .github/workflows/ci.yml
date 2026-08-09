@@ -1,0 +1,84 @@
+﻿# .github/workflows/ci.yml
+# Drop this file into each service repository.
+# Set these GitHub Actions secrets:
+#   AWS_ACCOUNT_ID, AWS_REGION, ECR_REPOSITORY (e.g. chonhanh24h/user-service)
+
+name: CI / Build & Push
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-2.amazonaws.com
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm test -- --passWithNoTests
+
+  build-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == "refs/heads/main" || github.ref == "refs/heads/develop"
+    permissions:
+      id-token: write   # OIDC for AWS auth
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: tag
+        run: echo "TAG=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (production Dockerfile)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.prod
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ steps.tag.outputs.TAG }}
+            ${{ env.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest
+
+      # Update Helm values-dev.yaml image tag and push to trigger ArgoCD sync
+      - name: Update dev image tag
+        if: github.ref == "refs/heads/develop"
+        run: |
+          sed -i "s|tag: .*|tag: \"${{ steps.tag.outputs.TAG }}\"|g" values-dev.yaml
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add values-dev.yaml
+          git commit -m "chore: update dev image to ${{ steps.tag.outputs.TAG }}" || true
+          git push
+
+      - name: Update prod image tag
+        if: github.ref == "refs/heads/main"
+        run: |
+          sed -i "s|tag: .*|tag: \"${{ steps.tag.outputs.TAG }}\"|g" values-prod.yaml
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add values-prod.yaml
+          git commit -m "chore: update prod image to ${{ steps.tag.outputs.TAG }}" || true
+          git push

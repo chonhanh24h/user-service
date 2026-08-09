@@ -1,0 +1,6 @@
+secrets:
+  JWT_SECRET: "chonhanh24h_secret_key_123!@#"
+  REQUEST_REGISTER_OTP_SECRET: "chonhanh24h_register_otp_secret_123!@#"
+  MONGODB_URI: "mongodb://app:user-pass@mongodb.mongodb.svc.cluster.local:27017/user-service"
+  REDIS_URL: "redis://:your-redis-password@redis-master.redis.svc.cluster.local:6379"
+  RABBITMQ_URL: "amqp://admin:your-rabbitmq-password@rabbitmq.rabbitmq.svc.cluster.local:5672"
