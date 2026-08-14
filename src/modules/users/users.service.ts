@@ -5,7 +5,7 @@ import * as bcrypt from 'bcryptjs';
 import * as _ from 'lodash';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
-import { User, UserDocument } from './user.schema';
+import { User, UserDocument } from './users.schema';
 import { UserMessage } from './users.enums';
 import {
   PAGINATION_LIMIT,
