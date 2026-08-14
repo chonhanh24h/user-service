@@ -30,7 +30,7 @@ jobs:
   build-push:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == "refs/heads/main" || github.ref == "refs/heads/develop"
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     permissions:
       id-token: write   # OIDC for AWS auth
       contents: read
@@ -64,7 +64,7 @@ jobs:
 
       # Update Helm values-dev.yaml image tag and push to trigger ArgoCD sync
       - name: Update dev image tag
-        if: github.ref == "refs/heads/develop"
+        if: github.ref == 'refs/heads/develop'
         run: |
           sed -i "s|tag: .*|tag: \"${{ steps.tag.outputs.TAG }}\"|g" values-dev.yaml
           git config user.name "github-actions"
@@ -74,7 +74,7 @@ jobs:
           git push
 
       - name: Update prod image tag
-        if: github.ref == "refs/heads/main"
+        if: github.ref == 'refs/heads/main'
         run: |
           sed -i "s|tag: .*|tag: \"${{ steps.tag.outputs.TAG }}\"|g" values-prod.yaml
           git config user.name "github-actions"
