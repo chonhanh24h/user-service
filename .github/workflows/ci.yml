@@ -1,42 +1,75 @@
 ﻿# .github/workflows/ci.yml
-# Drop this file into each service repository.
-# Set these GitHub Actions secrets:
-#   AWS_ACCOUNT_ID, AWS_REGION, ECR_REPOSITORY (e.g. chonhanh24h/user-service)
 
 name: CI / Build & Push
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
+
   pull_request:
-    branches: [main]
+    branches:
+      - main
 
 env:
   AWS_REGION: ap-southeast-2
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-2.amazonaws.com
 
 jobs:
+
+  # ============================================================
+  # TEST
+  # ============================================================
+
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-      - run: npm ci
-      - run: npm test -- --passWithNoTests
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --passWithNoTests
+
+
+  # ============================================================
+  # BUILD + PUSH IMAGE
+  # ============================================================
 
   build-push:
     needs: test
+
     runs-on: ubuntu-latest
+
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+
     permissions:
-      id-token: write   # OIDC for AWS auth
+      id-token: write
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+
+      # ----------------------------------------------------------
+      # Checkout service repository
+      # ----------------------------------------------------------
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+
+      # ----------------------------------------------------------
+      # AWS OIDC
+      # ----------------------------------------------------------
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -44,41 +77,140 @@ jobs:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-ecr-push
           aws-region: ${{ env.AWS_REGION }}
 
+
+      # ----------------------------------------------------------
+      # Login ECR
+      # ----------------------------------------------------------
+
       - name: Login to Amazon ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+
+
+      # ----------------------------------------------------------
+      # Generate image tag
+      # ----------------------------------------------------------
 
       - name: Set image tag
         id: tag
-        run: echo "TAG=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "TAG=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push (production Dockerfile)
+
+      # ----------------------------------------------------------
+      # Build + Push Docker image
+      # ----------------------------------------------------------
+
+      - name: Build and push production Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile.prod
           push: true
+
           tags: |
             ${{ env.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ steps.tag.outputs.TAG }}
             ${{ env.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest
 
-      # Update Helm values-dev.yaml image tag and push to trigger ArgoCD sync
+
+      # ========================================================
+      # UPDATE HELM CHART - DEV
+      # ========================================================
+
+      - name: Checkout helm-charts repository
+        if: github.ref == 'refs/heads/develop'
+        uses: actions/checkout@v4
+        with:
+          repository: chonhanh24h/helm-charts
+          token: ${{ secrets.HELM_CHARTS_TOKEN }}
+          path: helm-charts
+
+
       - name: Update dev image tag
         if: github.ref == 'refs/heads/develop'
+        env:
+          IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
+          SERVICE_NAME: ${{ github.event.repository.name }}
         run: |
-          sed -i "s|tag: .*|tag: \"${{ steps.tag.outputs.TAG }}\"|g" values-dev.yaml
+          echo "Service: ${SERVICE_NAME}"
+          echo "Image tag: ${IMAGE_TAG}"
+
+          VALUES_FILE="helm-charts/${SERVICE_NAME}/values-dev.yaml"
+
+          echo "Updating: ${VALUES_FILE}"
+
+          if [ ! -f "${VALUES_FILE}" ]; then
+            echo "ERROR: ${VALUES_FILE} does not exist"
+            exit 1
+          fi
+
+          sed -i -E "s|^([[:space:]]*tag:).*|\1 \"${IMAGE_TAG}\"|" "${VALUES_FILE}"
+
+          echo "Updated values-dev.yaml:"
+          cat "${VALUES_FILE}"
+
+          cd helm-charts
+
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add values-dev.yaml
-          git commit -m "chore: update dev image to ${{ steps.tag.outputs.TAG }}" || true
+
+          git add "${SERVICE_NAME}/values-dev.yaml"
+
+          git diff --cached
+
+          git commit \
+            -m "chore: update ${SERVICE_NAME} dev image to ${IMAGE_TAG}" \
+            || echo "No changes to commit"
+
           git push
+
+
+      # ========================================================
+      # UPDATE HELM CHART - PROD
+      # ========================================================
+
+      - name: Checkout helm-charts repository
+        if: github.ref == 'refs/heads/main'
+        uses: actions/checkout@v4
+        with:
+          repository: chonhanh24h/helm-charts
+          token: ${{ secrets.HELM_CHARTS_TOKEN }}
+          path: helm-charts
+
 
       - name: Update prod image tag
         if: github.ref == 'refs/heads/main'
+        env:
+          IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
+          SERVICE_NAME: ${{ github.event.repository.name }}
         run: |
-          sed -i "s|tag: .*|tag: \"${{ steps.tag.outputs.TAG }}\"|g" values-prod.yaml
+          echo "Service: ${SERVICE_NAME}"
+          echo "Image tag: ${IMAGE_TAG}"
+
+          VALUES_FILE="helm-charts/${SERVICE_NAME}/values-prod.yaml"
+
+          echo "Updating: ${VALUES_FILE}"
+
+          if [ ! -f "${VALUES_FILE}" ]; then
+            echo "ERROR: ${VALUES_FILE} does not exist"
+            exit 1
+          fi
+
+          sed -i -E "s|^([[:space:]]*tag:).*|\1 \"${IMAGE_TAG}\"|" "${VALUES_FILE}"
+
+          echo "Updated values-prod.yaml:"
+          cat "${VALUES_FILE}"
+
+          cd helm-charts
+
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add values-prod.yaml
-          git commit -m "chore: update prod image to ${{ steps.tag.outputs.TAG }}" || true
+
+          git add "${SERVICE_NAME}/values-prod.yaml"
+
+          git diff --cached
+
+          git commit \
+            -m "chore: update ${SERVICE_NAME} prod image to ${IMAGE_TAG}" \
+            || echo "No changes to commit"
+
           git push
