@@ -30,6 +30,10 @@ export class UsersService {
     @Inject(POST_SERVICE_NAME) private postServiceClient: ClientProxy,
   ) {}
 
+  async getMyInfo(userId: string) {
+    return this.userModel.findById(userId).select({ name: 1, phone: 1 }).exec();
+  }
+
   async putMyInfo(userId: string, body: any) {
     const userUpdate: any = {};
     const query = { _id: userId };

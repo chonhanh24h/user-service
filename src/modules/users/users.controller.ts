@@ -11,6 +11,11 @@ export class UsersController {
     return this.usersService.putMyInfo(data.userId, data.body);
   }
 
+  @MessagePattern({ cmd: 'get_profile' })
+  async getMyInfo(data: { userId: string }) {
+    return this.usersService.getMyInfo(data.userId);
+  }
+
   @MessagePattern({ cmd: 'get_favorite' })
   async getFavorite(data: { userId: string; query: any }) {
     return this.usersService.getFavorite(data.userId, data.query);
