@@ -5,13 +5,15 @@ import { UsersService } from './users.service';
 import { User, UserSchema } from './users.schema';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { MongoUserRepository } from './repository/mongo.user.repository';
+import { POST_SERVICE_NAME } from './users.consts';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     ClientsModule.registerAsync([
       {
-        name: 'POST_SERVICE',
+        name: POST_SERVICE_NAME,
         imports: [ConfigModule],
         useFactory: (configService: ConfigService) => ({
           transport: Transport.TCP,
@@ -27,6 +29,12 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
     ]),
   ],
   controllers: [UsersController],
-  providers: [UsersService],
+  providers: [
+    UsersService,
+    {
+      provide: 'IUserRepository',
+      useClass: MongoUserRepository,
+    },
+  ],
 })
 export class UsersModule {}

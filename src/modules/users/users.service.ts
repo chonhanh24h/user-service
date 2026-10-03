@@ -1,11 +1,8 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import * as _ from 'lodash';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
-import { User, UserDocument } from './users.schema';
 import { UserMessage } from './users.enums';
 import {
   PAGINATION_LIMIT,
@@ -20,18 +17,20 @@ import {
   CMD_GET_POSTS_BY_IDS,
   CMD_CHECK_POST_EXISTS,
 } from './users.consts';
+import { IUserRepository } from './interface/user.interface';
+import { encodedSearchTitle, encodedSearchUrl } from './utils/user.utils';
 
 @Injectable()
 export class UsersService {
   private readonly limit = PAGINATION_LIMIT;
 
   constructor(
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @Inject('IUserRepository') private readonly userRepository: IUserRepository,
     @Inject(POST_SERVICE_NAME) private postServiceClient: ClientProxy,
   ) {}
 
   async getMyInfo(userId: string) {
-    return this.userModel.findById(userId).select({ name: 1, phone: 1 }).exec();
+    return this.userRepository.findById(userId);
   }
 
   async putMyInfo(userId: string, body: any) {
@@ -68,14 +67,7 @@ export class UsersService {
       }
 
       if (!_.isEmpty(userUpdate)) {
-        const result = await this.userModel.bulkWrite([
-          {
-            updateOne: {
-              filter: query,
-              update: userUpdate,
-            },
-          },
-        ]);
+        const result = await this.userRepository.updateOne(query, userUpdate);
 
         if (result.modifiedCount) {
           return { status: true, msg: UserMessage.UPDATE_INFO_SUCCESS };
@@ -113,7 +105,7 @@ export class UsersService {
         };
       }
 
-      const user = await this.userModel.findOne({ _id: userId }).exec();
+      const user = await this.userRepository.findById(userId);
       if (!user) {
         return {
           status: false,
@@ -138,14 +130,7 @@ export class UsersService {
       userUpdate.password = hash;
 
       if (!_.isEmpty(userUpdate)) {
-        const result = await this.userModel.bulkWrite([
-          {
-            updateOne: {
-              filter: query,
-              update: userUpdate,
-            },
-          },
-        ]);
+        const result = await this.userRepository.updateOne(query, userUpdate);
 
         if (result.modifiedCount) {
           return { status: true, msg: UserMessage.UPDATE_PASSWORD_SUCCESS };
@@ -165,19 +150,15 @@ export class UsersService {
     }
     const skip = (page - 1) * this.limit;
 
-    const user = await this.userModel
-      .findById(userId)
-      .select({ favorite: 1 })
-      .lean()
-      .exec();
-    if (!user) {
+    const favorites = await this.userRepository.getFavorite(userId);
+    if (!favorites) {
       return { data: [], pageNext: 1 };
     }
 
     const posts = await firstValueFrom(
       this.postServiceClient.send(
         { cmd: CMD_GET_POSTS_BY_IDS },
-        { ids: user.favorite, skip, limit: this.limit },
+        { ids: favorites, skip, limit: this.limit },
       ),
     ).catch(() => []);
 
@@ -199,26 +180,23 @@ export class UsersService {
       return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
-    const user = await this.userModel.findById(userId).exec();
+    const user = await this.userRepository.findById(userId);
     if (!user) {
       return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
-    if (user.favorite.indexOf(id.toString()) < 0) {
-      try {
-        await this.userModel.updateOne(
-          { _id: userId },
-          { $push: { favorite: id } },
-        );
-        return { status: true, msg: UserMessage.SAVE_FAVORITE_SUCCESS };
-      } catch (err) {
-        return { status: false, msg: UserMessage.POST_NOT_FOUND };
-      }
-    } else {
+    if (user.favorite.indexOf(id.toString()) >= 0) {
       return {
         status: false,
         msg: UserMessage.FAVORITE_ALREADY_EXISTS,
       };
+    }
+
+    try {
+      await this.userRepository.saveFavorite(userId, id);
+      return { status: true, msg: UserMessage.SAVE_FAVORITE_SUCCESS };
+    } catch (err) {
+      return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
   }
 
@@ -236,41 +214,31 @@ export class UsersService {
       return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
-    const user = await this.userModel.findById(userId).exec();
+    const user = await this.userRepository.findById(userId);
     if (!user) {
       return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
-    if (user.favorite.indexOf(id.toString()) >= 0) {
-      const newFavorite = user.favorite.filter(
-        (fId) => fId.toString() !== id.toString(),
-      );
-      try {
-        await this.userModel.updateOne(
-          { _id: userId },
-          { favorite: newFavorite },
-        );
-        return { status: true, msg: UserMessage.UNSAVE_FAVORITE_SUCCESS };
-      } catch (err) {
-        return { status: false, msg: UserMessage.POST_NOT_FOUND };
-      }
-    } else {
+    if (user.favorite.indexOf(id.toString()) < 0) {
       return {
         status: false,
         msg: UserMessage.FAVORITE_NOT_FOUND,
       };
     }
+
+    try {
+      const newFavorite = user.favorite.filter(
+        (fId) => fId.toString() !== id.toString(),
+      );
+      await this.userRepository.unSaveFavorite(userId, newFavorite);
+      return { status: true, msg: UserMessage.UNSAVE_FAVORITE_SUCCESS };
+    } catch (err) {
+      return { status: false, msg: UserMessage.POST_NOT_FOUND };
+    }
   }
 
   async unSaveAllFavorite(userId: string) {
-    const result = await this.userModel.bulkWrite([
-      {
-        updateOne: {
-          filter: { _id: userId, favorite: { $ne: [] } },
-          update: { $set: { favorite: [] } },
-        },
-      },
-    ]);
+    const result = await this.userRepository.unSaveAllFavorite(userId);
 
     if (result.modifiedCount) {
       return { status: true };
@@ -280,23 +248,14 @@ export class UsersService {
   }
 
   async getSearch(userId: string, query: any) {
-    let page = 1;
-    if (query.page) {
-      page = parseInt(query.page, 10);
-    }
+    const page = Number(query?.page || 1);
     const skip = (page - 1) * this.limit;
     const pageNext = page + 1;
 
-    const results = await this.userModel
-      .aggregate([
-        { $match: { _id: userId } },
-        { $project: { search: 1 } },
-        { $unwind: '$search' },
-        { $skip: skip },
-        { $limit: this.limit },
-        { $project: { _id: 0, search: 1 } },
-      ])
-      .exec();
+    const results = await this.userRepository.getSearch(userId, {
+      skip,
+      limit: this.limit,
+    });
 
     if (results && results.length > 0) {
       const mysearch = results.map((o) => o.search);
@@ -313,36 +272,19 @@ export class UsersService {
       return { status: false, msg: UserMessage.POST_NOT_FOUND };
     }
 
-    const cleanedUrl = url.replace(/page=[0-9]*$/g, 'page=1');
-    // HTML-encode the title to prevent XSS (mirrors the entities.encode from original code)
-    const encodedTitle = title
-      ? title
-          .replace(/&/g, '&')
-          .replace(/</g, '<')
-          .replace(/>/g, '>')
-          .replace(/"/g, '"')
-          .replace(/'/g, '&#039;')
-      : '';
+    const cleanedUrl = encodedSearchUrl(url);
+    const encodedTitle = encodedSearchTitle(title);
 
-    const result = await this.userModel.bulkWrite([
-      {
-        updateOne: {
-          filter: { _id: userId },
-          update: {
-            $push: { search: { title: encodedTitle, url: cleanedUrl } },
-          },
-        },
-      },
-    ]);
+    const result = await this.userRepository.saveSearch(userId, {
+      title: encodedTitle,
+      url: cleanedUrl,
+    });
 
-    if (result.modifiedCount) {
-      return { status: true, msg: UserMessage.SAVE_SEARCH_SUCCESS };
-    } else {
-      return {
-        status: false,
-        msg: UserMessage.SAVE_SEARCH_FAILED,
-      };
+    if (!result.modifiedCount) {
+      return { status: false, msg: UserMessage.SAVE_SEARCH_FAILED };
     }
+
+    return { status: true, msg: UserMessage.SAVE_SEARCH_SUCCESS };
   }
 
   async unSaveSearch(userId: string, body: any) {
@@ -352,14 +294,7 @@ export class UsersService {
       return { status: false, msg: UserMessage.OPERATION_FAILED };
     }
 
-    const result = await this.userModel.bulkWrite([
-      {
-        updateOne: {
-          filter: { _id: userId, 'search._id': id },
-          update: { $pull: { search: { _id: id } as any } },
-        },
-      },
-    ]);
+    const result = await this.userRepository.unSaveSearch(userId, id);
 
     if (result.modifiedCount) {
       return { status: true, msg: UserMessage.UNSAVE_SEARCH_SUCCESS };
@@ -369,14 +304,7 @@ export class UsersService {
   }
 
   async unSaveAllSearch(userId: string) {
-    const result = await this.userModel.bulkWrite([
-      {
-        updateOne: {
-          filter: { _id: userId, search: { $ne: [] } },
-          update: { $set: { search: [] } },
-        },
-      },
-    ]);
+    const result = await this.userRepository.unSaveAllSearch(userId);
 
     if (result.modifiedCount) {
       return { status: true };

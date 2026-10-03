@@ -17,6 +17,7 @@ import { UsersModule } from './modules/users/users.module';
       }),
       inject: [ConfigService],
     }),
+    // Postgres module
     UsersModule,
   ],
 })
