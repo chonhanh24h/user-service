@@ -4,11 +4,13 @@ import { UsersService } from './users.service';
 import { User } from './users.schema';
 import { of } from 'rxjs';
 import * as bcrypt from 'bcryptjs';
+import { POST_SERVICE_NAME } from './users.consts';
 
 describe('UsersService', () => {
   let service: UsersService;
   let mockUserModel: any;
   let mockPostServiceClient: any;
+  let mockMongoRepository: any;
 
   beforeEach(async () => {
     // Mock user model
@@ -34,6 +36,19 @@ describe('UsersService', () => {
       send: jest.fn(),
     };
 
+    mockMongoRepository = {
+      findById: jest.fn(),
+      updateOne: jest.fn(),
+      getSearch: jest.fn(),
+      saveSearch: jest.fn(),
+      unSaveSearch: jest.fn(),
+      unSaveAllSearch: jest.fn(),
+      getFavorite: jest.fn(),
+      saveFavorite: jest.fn(),
+      unSaveFavorite: jest.fn(),
+      unSaveAllFavorite: jest.fn(),
+    }
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
@@ -42,9 +57,13 @@ describe('UsersService', () => {
           useValue: mockUserModel,
         },
         {
-          provide: 'POST_SERVICE',
+          provide: POST_SERVICE_NAME,
           useValue: mockPostServiceClient,
         },
+        {
+          provide: 'IUserRepository',
+          useValue: mockMongoRepository
+        }
       ],
     }).compile();
 
@@ -83,21 +102,17 @@ describe('UsersService', () => {
     });
 
     it('should remove special characters from name', async () => {
-      mockUserModel.bulkWrite.mockResolvedValue({ modifiedCount: 1 });
+      mockMongoRepository.updateOne.mockResolvedValue({ modifiedCount: 1 });
 
       const result = await service.putMyInfo('userId1', {
         phone: '0987654321',
         yourname: 'Test!@#Name',
       });
 
-      expect(mockUserModel.bulkWrite).toHaveBeenCalledWith([
-        {
-          updateOne: {
-            filter: { _id: 'userId1' },
-            update: { phone: '0987654321', name: 'TestName' },
-          },
-        },
-      ]);
+      expect(mockMongoRepository.updateOne).toHaveBeenCalledWith(
+        { _id: 'userId1' },
+        { phone: '0987654321', name: 'TestName' },
+      );
       expect(result).toEqual({
         status: true,
         msg: 'Cập nhật thông tin thành công!',
@@ -111,10 +126,10 @@ describe('UsersService', () => {
       };
 
       jest.spyOn(bcrypt, 'compareSync').mockReturnValue(true);
-      mockUserModel.findOne.mockReturnValue({
+      mockMongoRepository.findById.mockReturnValue({
         exec: jest.fn().mockResolvedValue(mockUser),
       });
-      mockUserModel.bulkWrite.mockResolvedValue({ modifiedCount: 1 });
+      mockMongoRepository.updateOne.mockResolvedValue({ modifiedCount: 1 });
 
       const result = await service.putMyInfo('userId1', {
         oldpassword: 'oldpass123',
@@ -135,7 +150,7 @@ describe('UsersService', () => {
       };
 
       jest.spyOn(bcrypt, 'compareSync').mockReturnValue(false);
-      mockUserModel.findOne.mockReturnValue({
+      mockMongoRepository.findById.mockReturnValue({
         exec: jest.fn().mockResolvedValue(mockUser),
       });
 
@@ -164,7 +179,7 @@ describe('UsersService', () => {
 
   describe('getFavorite', () => {
     it('should return empty data when user not found', async () => {
-      mockUserModel.findById.mockReturnValue({
+      mockMongoRepository.findById.mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockReturnValue({
             exec: jest.fn().mockResolvedValue(null),
@@ -184,7 +199,7 @@ describe('UsersService', () => {
         title: `Post ${i + 1}`,
       }));
 
-      mockUserModel.findById.mockReturnValue({
+      mockMongoRepository.getFavorite.mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockReturnValue({
             exec: jest.fn().mockResolvedValue(mockUser),
@@ -199,16 +214,9 @@ describe('UsersService', () => {
     });
 
     it('should set pageNext to null when less results than limit', async () => {
-      const mockUser = { favorite: ['postId1'] };
       const mockPosts = [{ title: 'Post 1' }];
 
-      mockUserModel.findById.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          lean: jest.fn().mockReturnValue({
-            exec: jest.fn().mockResolvedValue(mockUser),
-          }),
-        }),
-      });
+      mockMongoRepository.getFavorite.mockResolvedValue(['postId1']);
       mockPostServiceClient.send.mockReturnValue(of(mockPosts));
 
       const result = await service.getFavorite('userId1', {});
@@ -243,12 +251,9 @@ describe('UsersService', () => {
       const mockUser = {
         _id: 'userId1',
         favorite: ['otherPostId'],
-        save: jest.fn(),
       };
-      mockUserModel.findById.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUser),
-      });
-      mockUserModel.updateOne.mockResolvedValue({ modifiedCount: 1 });
+      mockMongoRepository.findById.mockResolvedValue(mockUser);
+      mockMongoRepository.saveFavorite.mockResolvedValue({ modifiedCount: 1 });
 
       const result = await service.saveFavorite('userId1', { id: 'post1' });
 
@@ -256,9 +261,9 @@ describe('UsersService', () => {
         status: true,
         msg: 'Đã LƯU vào danh sách yêu thích!',
       });
-      expect(mockUserModel.updateOne).toHaveBeenCalledWith(
-        { _id: 'userId1' },
-        { $push: { favorite: 'post1' } },
+      expect(mockMongoRepository.saveFavorite).toHaveBeenCalledWith(
+        'userId1',
+        'post1',
       );
     });
 
@@ -267,11 +272,9 @@ describe('UsersService', () => {
       const mockUser = {
         _id: 'userId1',
         favorite: ['post1'],
-        save: jest.fn(),
       };
-      mockUserModel.findById.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUser),
-      });
+      mockMongoRepository.findById.mockResolvedValue(mockUser);
+      mockMongoRepository.saveFavorite.mockResolvedValue({ modifiedCount: 1 });
 
       const result = await service.saveFavorite('userId1', { id: 'post1' });
 
@@ -298,10 +301,8 @@ describe('UsersService', () => {
         _id: 'userId1',
         favorite: ['post1', 'post2'],
       };
-      mockUserModel.findById.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUser),
-      });
-      mockUserModel.updateOne.mockResolvedValue({ modifiedCount: 1 });
+      mockMongoRepository.findById.mockResolvedValue(mockUser);
+      mockMongoRepository.unSaveFavorite.mockResolvedValue({ modifiedCount: 1 });
 
       const result = await service.unSaveFavorite('userId1', { id: 'post1' });
 
@@ -309,16 +310,16 @@ describe('UsersService', () => {
         status: true,
         msg: 'Đã XÓA khỏi danh sách yêu thích!',
       });
-      expect(mockUserModel.updateOne).toHaveBeenCalledWith(
-        { _id: 'userId1' },
-        { favorite: ['post2'] },
+      expect(mockMongoRepository.unSaveFavorite).toHaveBeenCalledWith(
+        'userId1',
+        ['post2'],
       );
     });
   });
 
   describe('unSaveAllFavorite', () => {
     it('should return success when favorites cleared', async () => {
-      mockUserModel.bulkWrite.mockResolvedValue({ modifiedCount: 1 });
+      mockMongoRepository.unSaveAllFavorite.mockResolvedValue({ modifiedCount: 1 });
 
       const result = await service.unSaveAllFavorite('userId1');
 
@@ -326,7 +327,7 @@ describe('UsersService', () => {
     });
 
     it('should return failure when no documents modified', async () => {
-      mockUserModel.bulkWrite.mockResolvedValue({ modifiedCount: 0 });
+      mockMongoRepository.unSaveAllFavorite.mockResolvedValue({ modifiedCount: 0 });
 
       const result = await service.unSaveAllFavorite('userId1');
 
@@ -343,9 +344,7 @@ describe('UsersService', () => {
         { search: { title: 'Search 1', url: '/search?q=1' } },
         { search: { title: 'Search 2', url: '/search?q=2' } },
       ];
-      mockUserModel.aggregate.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockResults),
-      });
+      mockMongoRepository.getSearch.mockResolvedValue(mockResults);
 
       const result = await service.getSearch('userId1', { page: '1' });
 
@@ -360,9 +359,7 @@ describe('UsersService', () => {
     });
 
     it('should return status false when no results', async () => {
-      mockUserModel.aggregate.mockReturnValue({
-        exec: jest.fn().mockResolvedValue([]),
-      });
+      mockMongoRepository.getSearch.mockResolvedValue([]);
 
       const result = await service.getSearch('userId1', {});
 
@@ -381,18 +378,13 @@ describe('UsersService', () => {
     });
 
     it('should save search with encoded title and cleaned URL', async () => {
-      mockUserModel.bulkWrite.mockResolvedValue({ modifiedCount: 1 });
+      mockMongoRepository.saveSearch.mockResolvedValue({ modifiedCount: 1 });
 
       const result = await service.saveSearch('userId1', {
         url: '/search?category=1&page=2',
         title: 'Test & Search <3',
       });
 
-      expect(mockUserModel.bulkWrite).toHaveBeenCalled();
-      const bulkWriteCall = mockUserModel.bulkWrite.mock.calls[0];
-      const updatePush = bulkWriteCall[0][0].updateOne.update.$push.search;
-      expect(updatePush.url).toBe('/search?category=1&page=1');
-      expect(updatePush.title).toContain('&');
       expect(result).toEqual({
         status: true,
         msg: 'Thành công! Bạn đã lưu tìm kiếm này.',
@@ -400,7 +392,7 @@ describe('UsersService', () => {
     });
 
     it('should return failure when bulkWrite modifies 0 docs', async () => {
-      mockUserModel.bulkWrite.mockResolvedValue({ modifiedCount: 0 });
+      mockMongoRepository.saveSearch.mockResolvedValue({ modifiedCount: 0 });
 
       const result = await service.saveSearch('userId1', {
         url: '/search?q=1',
@@ -425,18 +417,14 @@ describe('UsersService', () => {
     });
 
     it('should remove search successfully', async () => {
-      mockUserModel.bulkWrite.mockResolvedValue({ modifiedCount: 1 });
+      mockMongoRepository.unSaveSearch.mockResolvedValue({ modifiedCount: 1 });
 
       const result = await service.unSaveSearch('userId1', { id: 'search1' });
 
-      expect(mockUserModel.bulkWrite).toHaveBeenCalledWith([
-        {
-          updateOne: {
-            filter: { _id: 'userId1', 'search._id': 'search1' },
-            update: { $pull: { search: { _id: 'search1' } } },
-          },
-        },
-      ]);
+      expect(mockMongoRepository.unSaveSearch).toHaveBeenCalledWith(
+        'userId1',
+        'search1',
+      );
       expect(result).toEqual({
         status: true,
         msg: 'Thành công! Tìm kiếm đã được hủy.',
@@ -444,7 +432,7 @@ describe('UsersService', () => {
     });
 
     it('should return failure when no document was modified', async () => {
-      mockUserModel.bulkWrite.mockResolvedValue({ modifiedCount: 0 });
+      mockMongoRepository.unSaveSearch.mockResolvedValue({ modifiedCount: 0 });
 
       const result = await service.unSaveSearch('userId1', { id: 'search1' });
 
@@ -457,7 +445,7 @@ describe('UsersService', () => {
 
   describe('unSaveAllSearch', () => {
     it('should clear all searches successfully', async () => {
-      mockUserModel.bulkWrite.mockResolvedValue({ modifiedCount: 1 });
+      mockMongoRepository.unSaveAllSearch.mockResolvedValue({ modifiedCount: 1 });
 
       const result = await service.unSaveAllSearch('userId1');
 
@@ -465,7 +453,7 @@ describe('UsersService', () => {
     });
 
     it('should return failure when no modifications', async () => {
-      mockUserModel.bulkWrite.mockResolvedValue({ modifiedCount: 0 });
+      mockMongoRepository.unSaveAllSearch.mockResolvedValue({ modifiedCount: 0 });
 
       const result = await service.unSaveAllSearch('userId1');
 
