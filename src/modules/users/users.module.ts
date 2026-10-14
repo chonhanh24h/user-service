@@ -14,7 +14,6 @@ import { POST_SERVICE_NAME } from './users.consts';
     ClientsModule.registerAsync([
       {
         name: POST_SERVICE_NAME,
-        imports: [ConfigModule],
         useFactory: (configService: ConfigService) => ({
           transport: Transport.TCP,
           options: {
