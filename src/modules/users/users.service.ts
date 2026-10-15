@@ -30,7 +30,11 @@ export class UsersService {
   ) {}
 
   async getMyInfo(userId: string) {
-    return this.userRepository.findById(userId);
+    const user = await this.userRepository.findById(userId);
+    return {
+      name: user.name,
+      phone: user.phone,
+    };
   }
 
   async putMyInfo(userId: string, body: any) {

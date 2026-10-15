@@ -47,7 +47,7 @@ describe('UsersService', () => {
       saveFavorite: jest.fn(),
       unSaveFavorite: jest.fn(),
       unSaveAllFavorite: jest.fn(),
-    }
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -62,8 +62,8 @@ describe('UsersService', () => {
         },
         {
           provide: 'IUserRepository',
-          useValue: mockMongoRepository
-        }
+          useValue: mockMongoRepository,
+        },
       ],
     }).compile();
 
@@ -302,7 +302,9 @@ describe('UsersService', () => {
         favorite: ['post1', 'post2'],
       };
       mockMongoRepository.findById.mockResolvedValue(mockUser);
-      mockMongoRepository.unSaveFavorite.mockResolvedValue({ modifiedCount: 1 });
+      mockMongoRepository.unSaveFavorite.mockResolvedValue({
+        modifiedCount: 1,
+      });
 
       const result = await service.unSaveFavorite('userId1', { id: 'post1' });
 
@@ -319,7 +321,9 @@ describe('UsersService', () => {
 
   describe('unSaveAllFavorite', () => {
     it('should return success when favorites cleared', async () => {
-      mockMongoRepository.unSaveAllFavorite.mockResolvedValue({ modifiedCount: 1 });
+      mockMongoRepository.unSaveAllFavorite.mockResolvedValue({
+        modifiedCount: 1,
+      });
 
       const result = await service.unSaveAllFavorite('userId1');
 
@@ -327,7 +331,9 @@ describe('UsersService', () => {
     });
 
     it('should return failure when no documents modified', async () => {
-      mockMongoRepository.unSaveAllFavorite.mockResolvedValue({ modifiedCount: 0 });
+      mockMongoRepository.unSaveAllFavorite.mockResolvedValue({
+        modifiedCount: 0,
+      });
 
       const result = await service.unSaveAllFavorite('userId1');
 
@@ -445,7 +451,9 @@ describe('UsersService', () => {
 
   describe('unSaveAllSearch', () => {
     it('should clear all searches successfully', async () => {
-      mockMongoRepository.unSaveAllSearch.mockResolvedValue({ modifiedCount: 1 });
+      mockMongoRepository.unSaveAllSearch.mockResolvedValue({
+        modifiedCount: 1,
+      });
 
       const result = await service.unSaveAllSearch('userId1');
 
@@ -453,7 +461,9 @@ describe('UsersService', () => {
     });
 
     it('should return failure when no modifications', async () => {
-      mockMongoRepository.unSaveAllSearch.mockResolvedValue({ modifiedCount: 0 });
+      mockMongoRepository.unSaveAllSearch.mockResolvedValue({
+        modifiedCount: 0,
+      });
 
       const result = await service.unSaveAllSearch('userId1');
 
